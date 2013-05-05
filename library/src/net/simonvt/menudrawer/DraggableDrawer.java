@@ -50,7 +50,7 @@ public abstract class DraggableDrawer extends MenuDrawer {
     /**
      * The duration of the peek animation.
      */
-    protected static final int PEEK_DURATION = 5000;
+    protected static final int PEEK_DURATION = 1500;
 
     /**
      * Distance in dp from closed position from where the drawer is considered closed with regards to touch events.
