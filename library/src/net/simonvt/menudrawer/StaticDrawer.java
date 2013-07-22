@@ -3,15 +3,10 @@ package net.simonvt.menudrawer;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 
-public abstract class StaticDrawer extends MenuDrawer {
-
-    protected Position mPosition;
-
-    StaticDrawer(Activity activity, int dragMode) {
-        super(activity, dragMode);
-    }
+public class StaticDrawer extends MenuDrawer {
 
     public StaticDrawer(Context context) {
         super(context);
@@ -26,40 +21,18 @@ public abstract class StaticDrawer extends MenuDrawer {
     }
 
     @Override
-    protected void dispatchDraw(Canvas canvas) {
-        super.dispatchDraw(canvas);
-        if (mDropShadowEnabled) drawDropShadow(canvas);
-        if (mActiveIndicator != null) drawIndicator(canvas);
+    protected void initDrawer(Context context, AttributeSet attrs, int defStyle) {
+        super.initDrawer(context, attrs, defStyle);
+        super.addView(mMenuContainer, -1, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        super.addView(mContentContainer, -1, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        mIsStatic = true;
     }
 
-    private void drawDropShadow(Canvas canvas) {
-        final int width = getWidth();
-        final int height = getHeight();
-        final int menuSize = mMenuSize;
-        final int dropShadowSize = mDropShadowSize;
-
-        switch (mPosition) {
-            case LEFT:
-                mDropShadowDrawable.setBounds(menuSize - dropShadowSize, 0, menuSize, height);
-                break;
-
-            case TOP:
-                mDropShadowDrawable.setBounds(0, menuSize - dropShadowSize, width, menuSize);
-                break;
-
-            case RIGHT:
-                mDropShadowDrawable.setBounds(width - menuSize, 0, width - menuSize + dropShadowSize, height);
-                break;
-
-            case BOTTOM:
-                mDropShadowDrawable.setBounds(0, height - menuSize, width, height - menuSize + dropShadowSize);
-                break;
-        }
-
-        mDropShadowDrawable.draw(canvas);
+    @Override
+    protected void drawOverlay(Canvas canvas) {
+        // NO-OP
     }
-
-    protected abstract void drawIndicator(Canvas canvas);
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
@@ -101,8 +74,6 @@ public abstract class StaticDrawer extends MenuDrawer {
         final int width = MeasureSpec.getSize(widthMeasureSpec);
         final int height = MeasureSpec.getSize(heightMeasureSpec);
 
-        if (!mMenuSizeSet) mMenuSize = (int) (height * 0.25f);
-
         switch (mPosition) {
             case LEFT:
             case RIGHT: {
@@ -140,14 +111,17 @@ public abstract class StaticDrawer extends MenuDrawer {
 
     @Override
     public void toggleMenu(boolean animate) {
+        // NO-OP
     }
 
     @Override
     public void openMenu(boolean animate) {
+        // NO-OP
     }
 
     @Override
     public void closeMenu(boolean animate) {
+        // NO-OP
     }
 
     @Override
@@ -158,13 +132,13 @@ public abstract class StaticDrawer extends MenuDrawer {
     @Override
     public void setMenuSize(int size) {
         mMenuSize = size;
-        mMenuSizeSet = true;
         requestLayout();
         invalidate();
     }
 
     @Override
     public void setOffsetMenuEnabled(boolean offsetMenu) {
+        // NO-OP
     }
 
     @Override
@@ -174,18 +148,22 @@ public abstract class StaticDrawer extends MenuDrawer {
 
     @Override
     public void peekDrawer() {
+        // NO-OP
     }
 
     @Override
     public void peekDrawer(long delay) {
+        // NO-OP
     }
 
     @Override
     public void peekDrawer(long startDelay, long delay) {
+        // NO-OP
     }
 
     @Override
     public void setHardwareLayerEnabled(boolean enabled) {
+        // NO-OP
     }
 
     @Override
@@ -195,14 +173,41 @@ public abstract class StaticDrawer extends MenuDrawer {
 
     @Override
     public void setTouchMode(int mode) {
+        // NO-OP
     }
 
     @Override
     public void setTouchBezelSize(int size) {
+        // NO-OP
     }
 
     @Override
     public int getTouchBezelSize() {
         return 0;
+    }
+
+    @Override
+    public void setSlideDrawable(int drawableRes) {
+        // NO-OP
+    }
+
+    @Override
+    public void setSlideDrawable(Drawable drawable) {
+        // NO-OP
+    }
+
+    @Override
+    public void setupUpIndicator(Activity activity) {
+        // NO-OP
+    }
+
+    @Override
+    public void setDrawerIndicatorEnabled(boolean enabled) {
+        // NO-OP
+    }
+
+    @Override
+    public boolean isDrawerIndicatorEnabled() {
+        return false;
     }
 }

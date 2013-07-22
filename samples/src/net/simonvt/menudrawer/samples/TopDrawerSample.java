@@ -17,7 +17,7 @@ import android.widget.TextView;
 /**
  * Sample class illustrating how to add a menu drawer above the content area.
  */
-public class TopMenuSample extends Activity implements OnClickListener {
+public class TopDrawerSample extends Activity implements OnClickListener {
 
     private static final int MENU_OVERFLOW = 1;
 
@@ -28,13 +28,14 @@ public class TopMenuSample extends Activity implements OnClickListener {
     protected void onCreate(Bundle inState) {
         super.onCreate(inState);
 
-        mMenuDrawer = MenuDrawer.attach(this, MenuDrawer.MENU_DRAG_CONTENT, Position.TOP);
+        mMenuDrawer = MenuDrawer.attach(this, Position.TOP);
         mMenuDrawer.setTouchMode(MenuDrawer.TOUCH_MODE_FULLSCREEN);
         mMenuDrawer.setContentView(R.layout.activity_topmenu);
         mMenuDrawer.setMenuView(R.layout.menu_top);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
             getActionBar().setDisplayHomeAsUpEnabled(true);
+        }
 
         mContentTextView = (TextView) findViewById(R.id.contentText);
         findViewById(R.id.item1).setOnClickListener(this);
