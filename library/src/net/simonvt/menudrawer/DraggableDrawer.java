@@ -2,17 +2,16 @@ package net.simonvt.menudrawer;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Canvas;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.view.animation.AccelerateInterpolator;
 import android.view.animation.Interpolator;
 
 public abstract class DraggableDrawer extends MenuDrawer {
@@ -21,11 +20,6 @@ public abstract class DraggableDrawer extends MenuDrawer {
      * Key used when saving menu visibility state.
      */
     private static final String STATE_MENU_VISIBLE = "net.simonvt.menudrawer.MenuDrawer.menuVisible";
-
-    /**
-     * Interpolator used for stretching/retracting the active indicator.
-     */
-    protected static final Interpolator INDICATOR_INTERPOLATOR = new AccelerateInterpolator();
 
     /**
      * Interpolator used for peeking at the drawer.
@@ -57,6 +51,8 @@ public abstract class DraggableDrawer extends MenuDrawer {
      */
     private static final int CLOSE_ENOUGH = 3;
 
+    protected static final int INVALID_POINTER = -1;
+
     /**
      * Slop before starting a drag.
      */
@@ -83,14 +79,14 @@ public abstract class DraggableDrawer extends MenuDrawer {
     };
 
     /**
-     * Current left position of the content.
-     */
-    protected float mOffsetPixels;
-
-    /**
      * Indicates whether the drawer is currently being dragged.
      */
     protected boolean mIsDragging;
+
+    /**
+     * The current pointer id.
+     */
+    protected int mActivePointerId = INVALID_POINTER;
 
     /**
      * The initial X position of a drag.
@@ -155,7 +151,7 @@ public abstract class DraggableDrawer extends MenuDrawer {
     /**
      * Indicates whether the current layer type is {@link android.view.View#LAYER_TYPE_HARDWARE}.
      */
-    private boolean mLayerTypeHardware;
+    protected boolean mLayerTypeHardware;
 
     DraggableDrawer(Activity activity, int dragMode) {
         super(activity, dragMode);
@@ -201,7 +197,6 @@ public abstract class DraggableDrawer extends MenuDrawer {
 
     public void setMenuSize(final int size) {
         mMenuSize = size;
-        mMenuSizeSet = true;
         if (mDrawerState == STATE_OPEN || mDrawerState == STATE_OPENING) {
             setOffsetPixels(mMenuSize);
         }
@@ -289,9 +284,19 @@ public abstract class DraggableDrawer extends MenuDrawer {
 
         mOffsetPixels = offsetPixels;
 
+        if (mSlideDrawable != null) {
+            final float offset = Math.abs(mOffsetPixels) / mMenuSize;
+            mSlideDrawable.setOffset(offset);
+            updateUpContentDescription();
+        }
+
         if (newOffset != oldOffset) {
             onOffsetPixelsChanged(newOffset);
             mMenuVisible = newOffset != 0;
+
+            // Notify any attached listeners of the current open ratio
+            final float openRatio = ((float) Math.abs(newOffset)) / mMenuSize;
+            dispatchOnDrawerSlide(openRatio, newOffset);
         }
     }
 
@@ -317,24 +322,11 @@ public abstract class DraggableDrawer extends MenuDrawer {
      * If the current layer type is {@link android.view.View#LAYER_TYPE_HARDWARE}, this will set it to
      * {@link View#LAYER_TYPE_NONE}.
      */
-    private void stopLayerTranslation() {
+    protected void stopLayerTranslation() {
         if (mLayerTypeHardware) {
             mLayerTypeHardware = false;
             mContentContainer.setLayerType(View.LAYER_TYPE_NONE, null);
             mMenuContainer.setLayerType(View.LAYER_TYPE_NONE, null);
-        }
-    }
-
-    /**
-     * Compute the touch area based on the touch mode.
-     */
-    protected void updateTouchAreaSize() {
-        if (mTouchMode == TOUCH_MODE_BEZEL) {
-            mTouchSize = mTouchBezelSize;
-        } else if (mTouchMode == TOUCH_MODE_FULLSCREEN) {
-            mTouchSize = getMeasuredWidth();
-        } else {
-            mTouchSize = 0;
         }
     }
 
@@ -370,6 +362,17 @@ public abstract class DraggableDrawer extends MenuDrawer {
         stopLayerTranslation();
     }
 
+    protected void cancelContentTouch() {
+        final long now = SystemClock.uptimeMillis();
+        final MotionEvent cancelEvent = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0.0f, 0.0f, 0);
+        final int childCount = getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            getChildAt(i).dispatchTouchEvent(cancelEvent);
+        }
+        mContentContainer.dispatchTouchEvent(cancelEvent);
+        cancelEvent.recycle();
+    }
+
     /**
      * Moves the drawer to the position passed.
      *
@@ -400,6 +403,12 @@ public abstract class DraggableDrawer extends MenuDrawer {
         }
 
         duration = Math.min(duration, mMaxAnimationDuration);
+        animateOffsetTo(position, duration);
+    }
+
+    protected void animateOffsetTo(int position, int duration) {
+        final int startX = (int) mOffsetPixels;
+        final int dx = position - startX;
 
         if (dx > 0) {
             setDrawerState(STATE_OPENING);
@@ -496,21 +505,34 @@ public abstract class DraggableDrawer extends MenuDrawer {
         return Math.abs(mOffsetPixels) <= mCloseEnough;
     }
 
-    /**
-     * Returns true if the touch event occurs over the content.
-     *
-     * @param ev The motion event.
-     * @return True if the touch event occurred over the content, false otherwise.
-     */
-    protected abstract boolean isContentTouch(MotionEvent ev);
+    protected boolean canChildrenScroll(int dx, int dy, int x, int y) {
+        boolean canScroll = false;
 
-    /**
-     * Returns true if dragging the content should be allowed.
-     *
-     * @param ev The motion event.
-     * @return True if dragging the content should be allowed, false otherwise.
-     */
-    protected abstract boolean onDownAllowDrag(MotionEvent ev);
+        switch (mPosition) {
+            case LEFT:
+            case RIGHT:
+                if (!mMenuVisible) {
+                    canScroll = canChildScrollHorizontally(mContentContainer, false, dx,
+                            x - ViewHelper.getLeft(mContentContainer), y - ViewHelper.getTop(mContentContainer));
+                } else {
+                    canScroll = canChildScrollHorizontally(mMenuContainer, false, dx,
+                            x - ViewHelper.getLeft(mMenuContainer), y - ViewHelper.getTop(mContentContainer));
+                }
+                break;
+
+            case TOP:
+            case BOTTOM:
+                if (!mMenuVisible) {
+                    canScroll = canChildScrollVertically(mContentContainer, false, dy,
+                            x - ViewHelper.getLeft(mContentContainer), y - ViewHelper.getTop(mContentContainer));
+                } else {
+                    canScroll = canChildScrollVertically(mMenuContainer, false, dy,
+                            x - ViewHelper.getLeft(mMenuContainer), y - ViewHelper.getTop(mContentContainer));
+                }
+        }
+
+        return canScroll;
+    }
 
     /**
      * Tests scrollability within child views of v given a delta of dx.
@@ -537,7 +559,7 @@ public abstract class DraggableDrawer extends MenuDrawer {
                 final int childBottom = child.getBottom() + supportGetTranslationY(child);
 
                 if (x >= childLeft && x < childRight && y >= childTop && y < childBottom
-                        &&  canChildScrollHorizontally(child, true, dx, x - childLeft, y - childTop)) {
+                        && canChildScrollHorizontally(child, true, dx, x - childLeft, y - childTop)) {
                     return true;
                 }
             }
@@ -580,6 +602,22 @@ public abstract class DraggableDrawer extends MenuDrawer {
         return checkV && mOnInterceptMoveEventListener.isViewDraggable(v, dx, x, y);
     }
 
+    protected float getXVelocity(VelocityTracker velocityTracker) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO) {
+            return velocityTracker.getXVelocity(mActivePointerId);
+        }
+
+        return velocityTracker.getXVelocity();
+    }
+
+    protected float getYVelocity(VelocityTracker velocityTracker) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO) {
+            return velocityTracker.getYVelocity(mActivePointerId);
+        }
+
+        return velocityTracker.getYVelocity();
+    }
+
     private int supportGetTranslationY(View v) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
             return (int) v.getTranslationY();
@@ -595,63 +633,6 @@ public abstract class DraggableDrawer extends MenuDrawer {
 
         return 0;
     }
-
-    /**
-     * Returns true if dragging the content should be allowed.
-     *
-     * @param ev The motion event.
-     * @return True if dragging the content should be allowed, false otherwise.
-     */
-    protected abstract boolean onMoveAllowDrag(MotionEvent ev, float dx);
-
-    /**
-     * Called when a move event has happened while dragging the content is in progress.
-     *
-     * @param dx The X difference between the last motion event and the current motion event.
-     */
-    protected abstract void onMoveEvent(float dx);
-
-    /**
-     * Called when {@link android.view.MotionEvent#ACTION_UP} of {@link android.view.MotionEvent#ACTION_CANCEL} is
-     * delivered to {@link net.simonvt.menudrawer.MenuDrawer#onTouchEvent(android.view.MotionEvent)}.
-     *
-     * @param ev The motion event.
-     */
-    protected abstract void onUpEvent(MotionEvent ev);
-
-    @Override
-    protected void dispatchDraw(Canvas canvas) {
-        super.dispatchDraw(canvas);
-        final int offsetPixels = (int) mOffsetPixels;
-
-        if (offsetPixels != 0) drawMenuOverlay(canvas, offsetPixels);
-        if (mDropShadowEnabled) drawDropShadow(canvas, offsetPixels);
-        if (mActiveIndicator != null) drawIndicator(canvas, offsetPixels);
-    }
-
-    /**
-     * Called when the content drop shadow should be drawn.
-     *
-     * @param canvas       The canvas on which to draw.
-     * @param offsetPixels Value in pixels indicating the offset.
-     */
-    protected abstract void drawDropShadow(Canvas canvas, int offsetPixels);
-
-    /**
-     * Called when the menu overlay should be drawn.
-     *
-     * @param canvas       The canvas on which to draw.
-     * @param offsetPixels Value in pixels indicating the offset.
-     */
-    protected abstract void drawMenuOverlay(Canvas canvas, int offsetPixels);
-
-    /**
-     * Called when the active indicator should be drawn.
-     *
-     * @param canvas       The canvas on which to draw.
-     * @param offsetPixels Value in pixels indicating the offset.
-     */
-    protected abstract void drawIndicator(Canvas canvas, int offsetPixels);
 
     void saveState(Bundle state) {
         final boolean menuVisible = mDrawerState == STATE_OPEN || mDrawerState == STATE_OPENING;
